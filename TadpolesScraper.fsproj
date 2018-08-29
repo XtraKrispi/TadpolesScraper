@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="canopy" Version="2.0.1" />
+    <PackageReference Include="FSharp.Data" Version="2.4.6" />
+    <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="2.41.0" />
+    <PackageReference Include="Selenium.WebDriver.FirefoxDriver" Version="0.11.1" />
+  </ItemGroup>
+
+</Project>
