@@ -35,7 +35,7 @@ let convertToDay (element : OpenQA.Selenium.IWebElement) =
     
 
 let getUrls (monthYears : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement) list) =
-    let helper (month, year) = 
+    let helper ((month, year) : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement)) = 
         click month
         sleep 10
         let urlParts = elements "//li/div"
@@ -50,9 +50,8 @@ let getUrls (monthYears : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebEle
                                         let url = sprintf "https://www.tadpoles.com%s" (m.Groups.[1].Value.Replace("thumbnail=true", "").Replace("&thumbnail=true", ""))
                                         url, year, month, day
                                         )
-        printfn "Found %d urls" (List.length urlParts)
-        urlParts
-                  
+        printfn "Found %d urls for %s %s" (List.length urlParts) (month.Text) (year.Text)
+        urlParts                  
                                
     List.collect helper monthYears
 
@@ -95,7 +94,8 @@ let processUrl (dir : string) (cookies : Collections.ObjectModel.ReadOnlyCollect
     | _ -> ()
 
 let app user pass dir = 
-    start chrome
+    canopy.configuration.chromeDir <- AppContext.BaseDirectory    
+    start types.BrowserStartMode.ChromeHeadless
     url "https://www.tadpoles.com/"
     let origWindow = browser.CurrentWindowHandle
     click "#login-button"
@@ -111,8 +111,6 @@ let app user pass dir =
     waitForElement ".thumbnails"
     let cookies = browser.Manage().Cookies.AllCookies
     getMonthYears()
-    |> List.map (fun my -> printfn "MonthYear: %A" my
-                           my)
     |> getUrls
     |> List.iter (processUrl dir cookies)
 
