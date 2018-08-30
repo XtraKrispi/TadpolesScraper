@@ -13,7 +13,5 @@
     <PackageReference Include="canopy" Version="2.0.1" />
     <PackageReference Include="FSharp.Data" Version="3.0.0-beta4" />
     <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="2.41.0" />
-    <PackageReference Include="Selenium.WebDriver.FirefoxDriver" Version="0.11.1" />
   </ItemGroup>
-
 </Project>
