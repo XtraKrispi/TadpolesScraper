@@ -4,10 +4,7 @@ open System
 open System.Text.RegularExpressions
 open System.IO
 
-open canopy.runner.classic
-open canopy.configuration
 open canopy.classic
-open canopy
 open canopy
 
 open FSharp.Data
@@ -15,8 +12,9 @@ open System.Net
 
 let getMonthYears () : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement) list = 
     let rec getMonthYearHelper num res = 
-        let monthXPath = sprintf @"//*[@id=""app""]/div[4]/div[1]/ul/li[%d]/div/div/div/div/span[%d]" num 1
-        let yearXPath = sprintf @"//*[@id=""app""]/div[4]/div[1]/ul/li[%d]/div/div/div/div/span[%d]" num 2
+        let xPath n = sprintf @"//*[@id=""app""]/div[4]/div[1]/ul/li[%d]/div/div/div/div/span[%d]" num n
+        let monthXPath = xPath 1
+        let yearXPath = xPath 2
 
         match someElement monthXPath with
         | None -> res
