@@ -9,6 +9,25 @@ open canopy
 
 open FSharp.Data
 open System.Net
+open OpenQA.Selenium
+open System.Collections.Generic
+
+type Url = {
+    url : string
+    key : string
+    year : int
+    month : string
+    day : int
+    keyHash : string
+}
+
+let MD5Hash (input : string) =
+      use md5 = System.Security.Cryptography.MD5.Create()
+      input
+      |> System.Text.Encoding.ASCII.GetBytes
+      |> md5.ComputeHash
+      |> Seq.map (fun c -> c.ToString("X2"))
+      |> Seq.reduce (+)
 
 let getMonthYears () : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement) list = 
     let rec getMonthYearHelper num res = 
@@ -32,19 +51,21 @@ let convertToDay (element : OpenQA.Selenium.IWebElement) =
     | _ -> None
     
 
+let getDayFromElement div =
+    div 
+    |> someElementWithin ".name"
+    |> Option.map (elementWithin "span") 
+    |> Option.bind convertToDay
+
 let getUrls (monthYears : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement) list) =
     let helper ((month, year) : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement)) = 
         click month
         sleep 10
         let urlParts = elements "//li/div"
                         |> List.map (fun div -> div, urlRegex.Match(div.GetAttribute "style"))
-                        |> List.filter (fun (div, m) -> m.Success)
+                        |> List.filter (fun (div, m) -> m.Success && Option.isSome (getDayFromElement div))                        
                         |> List.map (fun (div, m) ->
-                                        let day = 
-                                            div 
-                                            |> someElementWithin ".name"
-                                            |> Option.map (elementWithin "span") 
-                                            |> Option.bind convertToDay
+                                        let day = getDayFromElement div |> Option.get
                                         let url = sprintf "https://www.tadpoles.com%s" (m.Groups.[1].Value.Replace("thumbnail=true", "").Replace("&thumbnail=true", ""))
                                         url, year, month, day
                                         )
@@ -53,7 +74,7 @@ let getUrls (monthYears : (OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebEle
                                
     List.collect helper monthYears
 
-let customizeRequest (cookies : Collections.ObjectModel.ReadOnlyCollection<OpenQA.Selenium.Cookie>) (req : Net.HttpWebRequest) : Net.HttpWebRequest =
+let customizeRequest (cookies : ICollection<Cookie>) (req : Net.HttpWebRequest) : Net.HttpWebRequest =
     let cookieContainer = Net.CookieContainer()
     cookies
     |> Seq.iter (fun cookie -> 
@@ -67,33 +88,48 @@ let customizeRequest (cookies : Collections.ObjectModel.ReadOnlyCollection<OpenQ
     req.CookieContainer <- cookieContainer
     req
 
-let processUrl (dir : string) (cookies : Collections.ObjectModel.ReadOnlyCollection<OpenQA.Selenium.Cookie>) ((url, year, month, day) : string * OpenQA.Selenium.IWebElement * OpenQA.Selenium.IWebElement * string option) = 
-    printfn "Url: %s" url
-    match url.Split("key=") with
-    | [|_;key|] -> 
-        let httpResponse = Http.Request(url, customizeHttpRequest = (customizeRequest cookies))
+let convertToKey ((url, year, month, day) : string * IWebElement * IWebElement * string)  = 
+    match url.Split ("key=") with
+    | [|_;key|] ->
+        Some { url = url
+               key = key
+               year = int year.Text
+               month = month.Text
+               day = int day 
+               keyHash = MD5Hash key
+             }
+    | _ -> None
+
+let fileExists (filenameWithoutExtension : string) (contents : string seq) : bool =
+    contents
+    |> Seq.exists (fun s -> s.StartsWith(filenameWithoutExtension, StringComparison.InvariantCultureIgnoreCase))
+
+let processUrl (dir : string) (cookies : ICollection<Cookie>) (contents : string seq) (url : Url) = 
+    printfn "Url: %s" url.url
+    let filenameWithoutExtension = Path.Combine(dir, string url.year, url.month, sprintf "%d_%s_%d_%s" url.year url.month url.day url.keyHash)
+    if fileExists filenameWithoutExtension contents then
+        printfn "File exists: %s" filenameWithoutExtension
+    else        
+        let httpResponse = Http.Request(url.url, customizeHttpRequest = (customizeRequest cookies))    
         let filename = 
             match httpResponse.Headers.["Content-Type"] with 
-            | "video/mp4" -> Some <| Path.Combine(dir, year.Text, month.Text, sprintf "%s_%s_%s_%s.mp4" year.Text month.Text (Option.defaultValue "" day) key)
-            | "image/jpeg" -> Some <| Path.Combine(dir, year.Text, month.Text, sprintf "%s_%s_%s_%s.jpg" year.Text month.Text (Option.defaultValue "" day) key)
+            | "video/mp4" -> Some <| sprintf "%s.mp4" filenameWithoutExtension
+            | "image/jpeg" -> Some <| sprintf "%s.jpg" filenameWithoutExtension
             | _ -> None
         match filename with
-        | None -> ()
+        | None -> 
+            printfn "Invalid filetype in response"
         | Some fname ->        
-            if File.Exists fname then
-                printfn "File exists: %s" fname
-            else 
-                printfn "Saving %s" fname
-                Directory.CreateDirectory (Path.GetDirectoryName(fname)) |> ignore
-                match httpResponse.Body with
-                | Binary bytes ->
-                    File.WriteAllBytes(fname, bytes)
-                | _ -> printfn "Failed"        
-    | _ -> ()
+            printfn "Saving %s" fname
+            Directory.CreateDirectory (Path.GetDirectoryName(fname)) |> ignore
+            match httpResponse.Body with
+            | Binary bytes ->
+                File.WriteAllBytes(fname, bytes)
+            | _ -> printfn "Failed"        
 
 let app user pass dir = 
     canopy.configuration.chromeDir <- AppContext.BaseDirectory    
-    start types.BrowserStartMode.ChromeHeadless
+    start types.BrowserStartMode.Chrome
     url "https://www.tadpoles.com/"
     let origWindow = browser.CurrentWindowHandle
     click "#login-button"
@@ -108,9 +144,14 @@ let app user pass dir =
     browser.SwitchTo().Window(origWindow) |> ignore   
     waitForElement ".thumbnails"
     let cookies = browser.Manage().Cookies.AllCookies
-    getMonthYears()
+    Directory.CreateDirectory dir |> ignore
+    let directoryContents = Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
+    getMonthYears()   
     |> getUrls
-    |> List.iter (processUrl dir cookies)
+    |> List.map convertToKey
+    |> List.filter (Option.isSome)
+    |> List.map (Option.get)
+    |> List.iter (processUrl dir cookies directoryContents)
 
 let getLineWithoutEcho () : string =
     let rec helper str = 
