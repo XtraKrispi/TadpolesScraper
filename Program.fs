@@ -11,6 +11,9 @@ open FSharp.Data
 open System.Net
 open OpenQA.Selenium
 open System.Collections.Generic
+open Argu
+
+type LoginType = | Google | Tadpoles
 
 type Url = {
     url : string
@@ -20,6 +23,20 @@ type Url = {
     day : int
     keyHash : string
 }
+
+type Args =
+| [<Mandatory>]Type of LoginType
+| [<Mandatory>]Username of string
+| [<Mandatory>]Password of string
+| Dir of string
+with
+    interface IArgParserTemplate with
+        member s.Usage = 
+            match s with
+            | Type _ -> "specify a type"
+            | Username _ -> "specify a username"
+            | Password _ -> "specify a password"
+            | Dir _ -> "specify a directory to save the images"
 
 let MD5Hash (input : string) =
       use md5 = System.Security.Cryptography.MD5.Create()
@@ -127,21 +144,29 @@ let processUrl (dir : string) (cookies : ICollection<Cookie>) (contents : string
                 File.WriteAllBytes(fname, bytes)
             | _ -> printfn "Failed"        
 
-let app user pass dir = 
+let app loginType user pass dir = 
+    canopy.configuration.compareTimeout <- 20.0
     canopy.configuration.chromeDir <- AppContext.BaseDirectory    
     start types.BrowserStartMode.Chrome
     url "https://www.tadpoles.com/"
-    let origWindow = browser.CurrentWindowHandle
     click "#login-button"
     click (first ".tp-block-half")
-    click ".other-login-button"
-    let newWindow = browser.WindowHandles |> Seq.find (fun w -> w <> origWindow )
-    browser.SwitchTo().Window(newWindow) |> ignore
-    "#identifierId" << user    
-    click "#identifierNext"
-    "[type=password]" << pass
-    click "#passwordNext"
-    browser.SwitchTo().Window(origWindow) |> ignore   
+    match loginType with
+    | Google ->
+        let origWindow = browser.CurrentWindowHandle
+        click ".other-login-button"
+        let newWindow = browser.WindowHandles |> Seq.find (fun w -> w <> origWindow )
+        browser.SwitchTo().Window(newWindow) |> ignore
+        "#identifierId" << user    
+        click "#identifierNext"
+        "[type=password]" << pass
+        click "#passwordNext"
+        browser.SwitchTo().Window(origWindow) |> ignore
+    | Tadpoles ->
+        click (first ".other-login-button")
+        first "input" << user
+        "[type=password]" << pass
+        click ".btn-primary"        
     waitForElement ".thumbnails"
     let cookies = browser.Manage().Cookies.AllCookies
     Directory.CreateDirectory dir |> ignore
@@ -151,7 +176,8 @@ let app user pass dir =
     |> List.map convertToKey
     |> List.filter (Option.isSome)
     |> List.map (Option.get)
-    |> List.iter (processUrl dir cookies directoryContents)
+    |> List.iter (processUrl dir cookies directoryContents)    
+    quit ()
 
 let getLineWithoutEcho () : string =
     let rec helper str = 
@@ -162,19 +188,40 @@ let getLineWithoutEcho () : string =
             helper (str + string key.KeyChar)
     helper ""
 
+let getLoginTypeText loginType = 
+    match loginType with
+    | Google -> "Google"
+    | Tadpoles -> "Tadpoles"
+
 [<EntryPoint>]
 let main argv =
     match argv with
-    | [|user;pass|] ->
-        app user pass "img"
-    | [|user;pass;dir|] ->
-        app user pass dir
-    | _ -> 
-        printf "Please enter your Google email: "
-        let user = Console.ReadLine()
-        printf "Please enter your Google password: "
-        let pass = getLineWithoutEcho()
-        printf "Please enter a directory to put the images or ENTER for default: "
-        let dir = Console.ReadLine()
-        app user pass (if String.IsNullOrEmpty(dir) then "img" else dir)
+    | [||] ->  
+        printfn "Please select a type of login:"
+        printfn "1: Google"
+        printfn "2: Tadpoles"
+        let type_ = Console.ReadLine()
+        let loginType = match type_ with 
+                        | "1"  -> Some Google
+                        | "2" -> Some Tadpoles
+                        | _ -> None
+        match loginType with
+        | None -> printfn "Invalid login type. Please try again."
+        | Some loginType_ -> 
+            printf "Please enter your %s email: " (getLoginTypeText loginType_)
+            let user = Console.ReadLine()
+            printf "Please enter your %s password: " (getLoginTypeText loginType_)
+            let pass = getLineWithoutEcho()
+            printfn ""
+            printf "Please enter a directory to put the images or ENTER for default: "
+            let dir = Console.ReadLine()
+            app loginType_ user pass (if String.IsNullOrEmpty(dir) then "img" else dir)
+    | _ ->        
+        let parser = ArgumentParser.Create<Args>(programName = "tadpoles-scraper.exe")        
+        let results = parser.Parse argv
+        let loginType = results.GetResult (Type)
+        let username = results.GetResult(Username)
+        let password = results.GetResult(Password)
+        let dir = results.GetResult(Dir, defaultValue = "img")
+        app loginType username password dir
     0

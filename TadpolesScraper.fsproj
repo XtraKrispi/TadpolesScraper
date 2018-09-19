@@ -10,6 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Argu" Version="5.1.0" />
     <PackageReference Include="canopy" Version="2.0.1" />
     <PackageReference Include="FSharp.Data" Version="3.0.0-beta4" />
     <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="2.41.0" />
