@@ -161,6 +161,15 @@ let app loginType user pass dir =
         click "#identifierNext"
         "[type=password]" << pass
         click "#passwordNext"
+        try
+         let newWindow = browser.WindowHandles |> Seq.find (fun w -> w <> origWindow )
+         browser.SwitchTo().Window(newWindow) |> ignore
+         printf "Please enter 2 factory auth pin: "
+         let pin = Console.ReadLine()
+         "#totpPin" << pin
+         click "#totpNext"
+         with _ ->
+             ()
         browser.SwitchTo().Window(origWindow) |> ignore
     | Tadpoles ->
         click (first ".other-login-button")
