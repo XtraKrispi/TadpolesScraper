@@ -165,8 +165,8 @@ let app loginType user pass dir =
          let newWindow = browser.WindowHandles |> Seq.find (fun w -> w <> origWindow )
          browser.SwitchTo().Window(newWindow) |> ignore
          printf "Please enter 2 factory auth pin: "
-         let fact = Console.ReadLine()
-         "#totpPin" << fact
+         let pin = Console.ReadLine()
+         "#totpPin" << pin
          click "#totpNext"
          with _ ->
              ()
