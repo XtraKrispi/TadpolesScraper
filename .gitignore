@@ -2,3 +2,5 @@ img/
 bin/
 obj/
 *.log
+.fake
+.ionide
